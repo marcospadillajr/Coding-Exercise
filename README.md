@@ -1,134 +1,135 @@
 # Equipment Valuation Service
 
-A service for calculating Market (FMV) and Auction (FLV) values for construction equipment based on Classification ID and Model Year.
+Calculate **Market (FMV)** and **Auction (FLV)** values for construction equipment from Classification ID and Model Year. Pure Python, standard library only—no build step or external dependencies.
+
+---
+
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+- [API Reference](#api-reference)
+- [Data Format](#data-format)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Design Notes](#design-notes)
+
+---
 
 ## Overview
 
-This service determines the Retail (Market) and Auction values of construction equipment using the formula:
+**Formula:** `Value = Cost × Ratio`
 
-**Value = Cost × Ratio**
+- **Cost** (`bookCost`) is fixed per Classification ID.
+- **Ratio** (depreciation schedule) depends on value type (FMV/FLV) and model year.
 
-Where:
-- **Cost** (bookCost) is static for a given Classification ID regardless of Model Year
-- **Ratio** (Depreciation Schedule Percentage) varies for each Value Type (FMV/FLV) and Model Year
+**Features:**
 
-## Features
+- FMV and FLV calculation with rounded dollar results
+- Model year validation (2006–2020)
+- Equipment metadata lookup by classification ID
+- Clear `ValueError`/`FileNotFoundError` for invalid inputs
+- No external dependencies (Python 3.6+)
 
-- Calculate Market (FMV) and Auction (FLV) values for equipment
-- Validates Model Year range (2006-2020)
-- Returns rounded dollar values
-- Comprehensive error handling
-- Full unit test coverage
+---
 
-## Requirements
+## Quick Start
 
-- Python 3.6 or higher
-- No external dependencies (uses only Python standard library)
+**Requirements:** Python 3.6+, no extra packages.
 
-## Usage
-
-### Basic Example
+1. Ensure `Book.json` is in the project (or pass its path to the service).
+2. Import and use:
 
 ```python
 from equipment_valuation_service import EquipmentValuationService
 
-# Initialize the service
 service = EquipmentValuationService("Book.json")
+result = service.calculate_values("87390", 2016)
+# {"fmv": 30008, "flv": 20426}
+```
 
-# Calculate values for Classification ID 87390, Model Year 2016
+Run the example script:
+
+```bash
+python example_usage.py
+```
+
+---
+
+## Usage
+
+### Calculate FMV/FLV
+
+```python
+service = EquipmentValuationService("Book.json")
 result = service.calculate_values("87390", 2016)
 
-print(f"Market Value (FMV): ${result['fmv']:,}")
-print(f"Auction Value (FLV): ${result['flv']:,}")
-# Output:
-# Market Value (FMV): $30,008
-# Auction Value (FLV): $20,426
+print(f"Market (FMV): ${result['fmv']:,}")   # $30,008
+print(f"Auction (FLV): ${result['flv']:,}")  # $20,426
 ```
 
-### Example with Different ID
+| Parameter           | Type | Notes                    |
+|--------------------|------|--------------------------|
+| `classification_id`| str  | e.g. `"87390"`           |
+| `model_year`       | int  | 2006–2020                |
+
+### Equipment metadata
 
 ```python
-service = EquipmentValuationService("Book.json")
-result = service.calculate_values("67352", 2016)
-
-print(f"FMV: ${result['fmv']:,}")
-print(f"FLV: ${result['flv']:,}")
-```
-
-### Get Equipment Information
-
-```python
-service = EquipmentValuationService("Book.json")
 info = service.get_equipment_info("87390")
-
 if info:
-    print(f"Category: {info['category']}")
-    print(f"Subcategory: {info['subcategory']}")
-    print(f"Make: {info['make']}")
-    print(f"Model: {info['model']}")
+    print(info["category"], info["subcategory"], info["make"], info["model"])
 ```
 
-## Error Handling
+### Error handling
 
-The service provides friendly error messages for invalid inputs:
-
-- **Invalid Model Year**: Model year must be between 2006 and 2020
-- **Invalid Classification ID**: Classification ID not found in equipment data
-- **File Not Found**: Data file (Book.json) not found
-
-### Example Error Handling
+Invalid inputs raise `ValueError` with clear messages:
 
 ```python
 try:
-    result = service.calculate_values("87390", 2021)  # Invalid year
+    service.calculate_values("87390", 2021)  # year out of range
 except ValueError as e:
-    print(f"Error: {e}")
-    # Output: Error: Model year must be between 2006 and 2020, got 2021
+    print(e)  # Model year must be between 2006 and 2020, got 2021
 ```
 
-## Running Tests
+- **Invalid model year** → must be 2006–2020  
+- **Unknown classification ID** → not in data  
+- **Missing file** → `FileNotFoundError` for bad data path  
 
-Run the unit tests using:
+---
 
-```bash
-python -m pytest test_equipment_valuation_service.py -v
-```
+## API Reference
 
-Or using unittest:
+### `EquipmentValuationService(data_file: str = "Book.json")`
 
-```bash
-python test_equipment_valuation_service.py
-```
+Loads equipment data from the given JSON path. Use this path in your environment (e.g. `"Book.json"` next to the script).
 
-## Test Coverage
+### `calculate_values(classification_id: str, model_year: int) -> Dict[str, float]`
 
-The test suite includes:
+Returns `{"fmv": <int>, "flv": <int>}` (rounded to nearest dollar).
 
--  Valid calculations for example cases
--  Boundary testing (min/max model years)
--  Error handling for invalid inputs
--  Type validation
--  Rounding verification
--  All years in valid range (2006-2020)
+**Raises:** `ValueError` for invalid year or unknown ID; `FileNotFoundError` if the data file is missing.
+
+### `get_equipment_info(classification_id: str) -> Optional[Dict]`
+
+Returns a dict with `category`, `subcategory`, `make`, `model`, or `None` if the ID is not found.
+
+---
 
 ## Data Format
 
-The service expects a JSON file with the following structure:
+JSON keyed by classification ID:
 
 ```json
 {
   "CLASSIFICATION_ID": {
     "schedule": {
       "years": {
-        "YEAR": {
-          "fmv": RATIO,
-          "flv": RATIO
-        }
+        "YEAR": { "fmv": RATIO, "flv": RATIO }
       }
     },
-    "baseValue": {
-      "bookCost": COST
-    },
+    "baseValue": { "bookCost": COST },
     "classification": {
       "category": "...",
       "subcategory": "...",
@@ -139,35 +140,44 @@ The service expects a JSON file with the following structure:
 }
 ```
 
-## API Reference
+---
 
-### `EquipmentValuationService`
+## Testing
 
-#### `__init__(data_file: str = "Book.json")`
-Initialize the service with equipment data.
+```bash
+python -m pytest test_equipment_valuation_service.py -v
+```
 
-**Parameters:**
-- `data_file` (str): Path to the JSON file containing equipment data
+Or with unittest:
 
-#### `calculate_values(classification_id: str, model_year: int) -> Dict[str, float]`
-Calculate Market (FMV) and Auction (FLV) values.
+```bash
+python test_equipment_valuation_service.py
+```
 
-**Parameters:**
-- `classification_id` (str): The Classification ID
-- `model_year` (int): The Model Year (2006-2020)
+Coverage includes: valid calculations, min/max year boundaries, invalid inputs, type checks, rounding, and all years 2006–2020.
 
-**Returns:**
-- Dictionary with `fmv` (Market Value) and `flv` (Auction Value) rounded to nearest dollar
+---
 
-**Raises:**
-- `ValueError`: If classification_id is not found or model_year is invalid
-- `FileNotFoundError`: If data file is not found
+## Deployment
 
-#### `get_equipment_info(classification_id: str) -> Optional[Dict]`
-Get equipment classification information.
+- **As a library:** Ship `equipment_valuation_service.py` and your data file (e.g. `Book.json`); import and instantiate with the data path.
+- **As a script:** Run from the project directory (e.g. `python example_usage.py`).
+- **Over HTTP:** Use a thin wrapper (Flask, FastAPI, etc.) in your own project; this module has no server.
 
-**Parameters:**
-- `classification_id` (str): The Classification ID
+Optional virtual environment:
 
-**Returns:**
-- Dictionary with classification info or None if not found
+```bash
+python -m venv venv
+# Windows: venv\Scripts\activate
+# Linux/macOS: source venv/bin/activate
+```
+
+---
+
+## Design Notes
+
+- **Service class:** One place for loading data and running valuations; callers use the service, not raw JSON or formulas.
+- **Constructor injection:** Data file path is passed in `__init__`; no hard-coded paths for testability and reuse.
+- **Validation:** Model year and classification ID are validated before calculation; invalid input raises `ValueError` with clear messages.
+- **Constants:** `MIN_MODEL_YEAR` / `MAX_MODEL_YEAR` centralize the valid year range.
+- **Single responsibility:** Valuation and metadata only; no HTTP, logging, or extra I/O—handled by the caller or another layer.
